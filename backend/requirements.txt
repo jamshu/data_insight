@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+pandas
+numpy
+openpyxl
+python-multipart
+aiofiles
+plotly
+python-dotenv
+pydantic-settings
+pyarrow
