@@ -151,8 +151,16 @@
 
         <!-- Data Preview Tab -->
         <div v-if="activeTab === 'data'" class="card">
-          <div class="p-6 border-b border-gray-200 dark:border-gray-700">
+          <div class="p-6 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
             <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Data Preview</h2>
+            <button @click="exportCurrentData()" 
+                    class="btn-secondary flex items-center space-x-2">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                      d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <span>Export Data</span>
+            </button>
           </div>
           <div class="overflow-x-auto">
             <table class="w-full">
@@ -173,6 +181,120 @@
                 </tr>
               </tbody>
             </table>
+          </div>
+        </div>
+
+        <!-- Filter Tab -->
+        <div v-if="activeTab === 'filter'" class="space-y-6">
+          <!-- Filter Controls -->
+          <div class="card p-6">
+            <div class="flex justify-between items-center mb-4">
+              <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Data Filters</h3>
+              <button @click="addFilter" 
+                      class="btn-primary flex items-center space-x-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                </svg>
+                <span>Add Filter</span>
+              </button>
+            </div>
+            
+            <!-- Filter List -->
+            <div class="space-y-3">
+              <div v-for="(filter, index) in filters" :key="index" 
+                   class="flex items-center space-x-3 p-3 bg-gray-50 dark:bg-gray-700 rounded">
+                <select v-model="filter.column" 
+                        @change="updateFilterType(index)"
+                        class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white">
+                  <option value="">Select column...</option>
+                  <option v-for="col in dataColumns" :key="col" :value="col">{{ col }}</option>
+                </select>
+                
+                <select v-model="filter.operator" 
+                        class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white">
+                  <option v-for="op in getOperatorsForColumn(filter.column)" :key="op" :value="op">{{ op }}</option>
+                </select>
+                
+                <input v-model="filter.value" 
+                       :type="getInputTypeForColumn(filter.column)"
+                       placeholder="Value"
+                       class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white" />
+                
+                <button @click="removeFilter(index)" 
+                        class="p-2 text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300">
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            
+            <!-- Apply Filters Button -->
+            <div class="mt-4 flex justify-end space-x-3">
+              <button @click="clearFilters" 
+                      class="btn-secondary">
+                Clear All
+              </button>
+              <button @click="applyFilters" 
+                      :disabled="filters.length === 0"
+                      class="btn-primary">
+                Apply Filters
+              </button>
+            </div>
+          </div>
+          
+          <!-- Filter Results -->
+          <div v-if="filterResults" class="card">
+            <div class="p-6 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
+              <div>
+                <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Filtered Results</h3>
+                <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  {{ filterResults.rows_matched }} rows match your filters 
+                  <span v-if="analysisData && analysisData.rows > 0">
+                    ({{ ((filterResults.rows_matched / analysisData.rows) * 100).toFixed(1) }}%)
+                  </span>
+                </p>
+              </div>
+              <button @click="exportFilteredData()" 
+                      v-if="filterResults.rows_matched > 0"
+                      class="btn-secondary flex items-center space-x-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                        d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <span>Export Filtered</span>
+              </button>
+            </div>
+            <div v-if="filterResults.rows_matched > 0" class="overflow-x-auto">
+              <table class="w-full">
+                <thead class="bg-gray-50 dark:bg-gray-700">
+                  <tr>
+                    <th v-for="col in dataColumns" :key="col" 
+                        class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                      {{ col }}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                  <tr v-for="(row, idx) in filterResults.sample" :key="idx" 
+                      class="hover:bg-gray-50 dark:hover:bg-gray-700">
+                    <td v-for="col in dataColumns" :key="col" 
+                        class="px-6 py-4 text-sm text-gray-900 dark:text-white whitespace-nowrap">
+                      {{ row[col] }}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div v-else class="p-8 text-center">
+              <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                      d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                No data matches your filter criteria. Try adjusting your filters.
+              </p>
+            </div>
           </div>
         </div>
 
@@ -227,10 +349,18 @@
 
           <!-- Group By Results -->
           <div v-if="groupByResults" class="card">
-            <div class="p-6 border-b border-gray-200 dark:border-gray-700">
+            <div class="p-6 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
               <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
                 {{ groupByConfig.column }} by {{ groupByConfig.aggFunc === 'count' ? 'Count' : groupByConfig.aggColumn }}
               </h3>
+              <button @click="exportGroupByData()" 
+                      class="btn-secondary flex items-center space-x-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                        d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <span>Export Results</span>
+              </button>
             </div>
             <div class="overflow-x-auto">
               <table class="w-full">
@@ -339,6 +469,7 @@ const tabs = [
   { id: 'overview', name: 'Overview' },
   { id: 'visualizations', name: 'Visualizations' },
   { id: 'data', name: 'Data Preview' },
+  { id: 'filter', name: 'Filter' },
   { id: 'groupby', name: 'Group By' },
   { id: 'patterns', name: 'Patterns & Insights' }
 ]
@@ -354,6 +485,15 @@ const categoricalColumns = ref([])
 const numericColumns = ref([])
 const filteredData = ref(null)
 const showFilterModal = ref(false)
+
+// Filter state
+const filters = ref([])
+const filterResults = ref(null)
+const availableOperators = {
+  numeric: ['=', '!=', '>', '<', '>=', '<='],
+  text: ['=', '!=', 'contains', 'starts with', 'ends with'],
+  date: ['=', '!=', '>', '<', '>=', '<=']
+}
 
 const fetchAnalysis = async (sessionId) => {
   if (!sessionId) return
@@ -594,6 +734,171 @@ watch(activeTab, async (newTab) => {
     createVisualizations()
   }
 })
+
+// Filter functionality
+const addFilter = () => {
+  filters.value.push({
+    column: '',
+    operator: '=',
+    value: ''
+  })
+}
+
+const removeFilter = (index) => {
+  filters.value.splice(index, 1)
+}
+
+const clearFilters = () => {
+  filters.value = []
+  filterResults.value = null
+}
+
+const updateFilterType = (index) => {
+  const filter = filters.value[index]
+  if (filter.column) {
+    const columnStat = analysisData.value.column_stats.find(stat => stat.column === filter.column)
+    if (columnStat) {
+      // Set default operator based on column type
+      if (columnStat.dtype.includes('int') || columnStat.dtype.includes('float')) {
+        filter.operator = '='
+      } else {
+        filter.operator = '='
+      }
+    }
+  }
+}
+
+const getOperatorsForColumn = (column) => {
+  if (!column || !analysisData.value) return ['=']
+  
+  const columnStat = analysisData.value.column_stats.find(stat => stat.column === column)
+  if (!columnStat) return ['=']
+  
+  if (columnStat.dtype.includes('int') || columnStat.dtype.includes('float')) {
+    return availableOperators.numeric
+  } else if (columnStat.dtype.includes('date')) {
+    return availableOperators.date
+  } else {
+    return availableOperators.text
+  }
+}
+
+const getInputTypeForColumn = (column) => {
+  if (!column || !analysisData.value) return 'text'
+  
+  const columnStat = analysisData.value.column_stats.find(stat => stat.column === column)
+  if (!columnStat) return 'text'
+  
+  if (columnStat.dtype.includes('int') || columnStat.dtype.includes('float')) {
+    return 'number'
+  } else if (columnStat.dtype.includes('date')) {
+    return 'date'
+  }
+  return 'text'
+}
+
+const applyFilters = async () => {
+  const sessionId = route.params.sessionId
+  if (!sessionId || filters.value.length === 0) return
+  
+  // Validate filters
+  const validFilters = filters.value.filter(f => f.column && f.operator && f.value !== '')
+  if (validFilters.length === 0) {
+    showNotification('Please complete at least one filter', 'warning')
+    return
+  }
+  
+  try {
+    const response = await axios.post(`/api/analysis/${sessionId}/custom`, {
+      type: 'filter',
+      filters: validFilters
+    })
+    
+    filterResults.value = response.data
+    showNotification(`Found ${response.data.rows_matched} matching rows`, 'success')
+  } catch (error) {
+    console.error('Filter failed:', error)
+    showNotification('Failed to apply filters', 'error')
+  }
+}
+
+// Export functions
+const exportCurrentData = async () => {
+  const sessionId = route.params.sessionId
+  if (!sessionId) return
+  
+  try {
+    // If there's filtered data, export that; otherwise export full data
+    const params = filteredData.value ? { filtered: true } : {}
+    
+    const response = await axios.get(`/api/export/${sessionId}`, {
+      params: { format: 'csv', ...params },
+      responseType: 'blob'
+    })
+    
+    downloadFile(response.data, `data_preview_${sessionId}.csv`)
+    showNotification('Data exported successfully', 'success')
+  } catch (error) {
+    console.error('Export failed:', error)
+    showNotification('Failed to export data', 'error')
+  }
+}
+
+const exportFilteredData = async () => {
+  if (!filterResults.value) return
+  
+  const sessionId = route.params.sessionId
+  if (!sessionId) return
+  
+  try {
+    const response = await axios.post(`/api/export/${sessionId}/custom`, {
+      type: 'filter',
+      filters: filters.value.filter(f => f.column && f.operator && f.value !== ''),
+      format: 'csv'
+    })
+    
+    downloadFile(new Blob([response.data]), `filtered_data_${sessionId}.csv`)
+    showNotification('Filtered data exported successfully', 'success')
+  } catch (error) {
+    console.error('Export failed:', error)
+    showNotification('Failed to export filtered data', 'error')
+  }
+}
+
+const exportGroupByData = async () => {
+  if (!groupByResults.value) return
+  
+  const sessionId = route.params.sessionId
+  if (!sessionId) return
+  
+  try {
+    // Convert group by results to CSV
+    const headers = Object.keys(groupByResults.value[0])
+    const csvContent = [
+      headers.join(','),
+      ...groupByResults.value.map(row => 
+        headers.map(h => JSON.stringify(row[h] ?? '')).join(',')
+      )
+    ].join('\n')
+    
+    downloadFile(new Blob([csvContent]), `groupby_${groupByConfig.value.column}_${sessionId}.csv`)
+    showNotification('Group by results exported successfully', 'success')
+  } catch (error) {
+    console.error('Export failed:', error)
+    showNotification('Failed to export group by results', 'error')
+  }
+}
+
+const downloadFile = (blob, filename) => {
+  const url = window.URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.setAttribute('download', filename)
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.URL.revokeObjectURL(url)
+}
 
 // Watch for route changes
 watch(() => route.params.sessionId, (newSessionId) => {

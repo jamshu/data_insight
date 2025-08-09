@@ -85,32 +85,72 @@ async def custom_analysis(
         
         if analysis_type == "filter":
             # Filter data based on conditions
-            column = query.get("column")
-            operator = query.get("operator", "=")
-            value = query.get("value")
+            filters = query.get("filters", [])
             
-            if column and value is not None:
+            # Support both single filter (backward compatibility) and multiple filters
+            if not filters:
+                # Check if it's a single filter (old format)
+                column = query.get("column")
+                operator = query.get("operator", "=")
+                value = query.get("value")
+                if column and value is not None:
+                    filters = [{"column": column, "operator": operator, "value": value}]
+            
+            if filters:
                 df = processor.df
+                filtered = df.copy()
                 
-                if operator == "=":
-                    filtered = df[df[column] == value]
-                elif operator == ">":
-                    filtered = df[df[column] > value]
-                elif operator == "<":
-                    filtered = df[df[column] < value]
-                elif operator == ">=":
-                    filtered = df[df[column] >= value]
-                elif operator == "<=":
-                    filtered = df[df[column] <= value]
-                elif operator == "!=":
-                    filtered = df[df[column] != value]
-                else:
-                    filtered = df
+                for filter_item in filters:
+                    column = filter_item.get("column")
+                    operator = filter_item.get("operator", "=")
+                    value = filter_item.get("value")
+                    
+                    if column and value is not None:
+                        try:
+                            # Handle text operators
+                            if operator == "=":
+                                # Convert both sides to string for text comparison
+                                filtered = filtered[filtered[column].astype(str) == str(value)]
+                            elif operator == "!=":
+                                filtered = filtered[filtered[column].astype(str) != str(value)]
+                            elif operator == "contains":
+                                filtered = filtered[filtered[column].astype(str).str.contains(str(value), case=False, na=False)]
+                            elif operator == "starts with":
+                                filtered = filtered[filtered[column].astype(str).str.startswith(str(value), na=False)]
+                            elif operator == "ends with":
+                                filtered = filtered[filtered[column].astype(str).str.endswith(str(value), na=False)]
+                            # Numeric operators
+                            elif operator in [">", "<", ">=", "<="]:
+                                # Try to convert to numeric if possible
+                                try:
+                                    numeric_value = float(value)
+                                    if operator == ">":
+                                        filtered = filtered[filtered[column] > numeric_value]
+                                    elif operator == "<":
+                                        filtered = filtered[filtered[column] < numeric_value]
+                                    elif operator == ">=":
+                                        filtered = filtered[filtered[column] >= numeric_value]
+                                    elif operator == "<=":
+                                        filtered = filtered[filtered[column] <= numeric_value]
+                                except (ValueError, TypeError):
+                                    # If conversion fails, skip this filter
+                                    continue
+                        except Exception as e:
+                            print(f"Error applying filter on column {column}: {str(e)}")
+                            continue
                 
+                # Always return a valid response, even if no matches
                 return {
                     "rows_matched": len(filtered),
-                    "percentage": (len(filtered) / len(df)) * 100,
-                    "sample": filtered.head(100).to_dict('records')
+                    "percentage": (len(filtered) / len(df)) * 100 if len(df) > 0 else 0,
+                    "sample": filtered.head(100).to_dict('records') if len(filtered) > 0 else []
+                }
+            else:
+                # No filters provided, return empty result
+                return {
+                    "rows_matched": 0,
+                    "percentage": 0,
+                    "sample": []
                 }
         
         elif analysis_type == "groupby":
