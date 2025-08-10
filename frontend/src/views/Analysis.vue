@@ -405,34 +405,9 @@
           </div>
         </div>
 
-        <!-- Patterns Tab -->
-        <div v-if="activeTab === 'patterns'" class="space-y-6">
-          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <!-- Outliers -->
-            <div class="card p-6">
-              <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Outliers Detected</h3>
-              <div v-if="analysisData.patterns?.outliers">
-                <div v-for="(outliers, col) in analysisData.patterns.outliers" :key="col" 
-                     class="mb-3 p-3 bg-gray-50 dark:bg-gray-700 rounded">
-                  <p class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ col }}</p>
-                  <p class="text-xs text-gray-500 dark:text-gray-400">{{ outliers.length }} outliers found</p>
-                </div>
-              </div>
-              <p v-else class="text-sm text-gray-500 dark:text-gray-400">No outliers detected</p>
-            </div>
-
-            <!-- Data Quality Issues -->
-            <div class="card p-6">
-              <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Quality Issues</h3>
-              <div class="space-y-3">
-                <div v-for="issue in analysisData.patterns?.quality_issues" :key="issue.type"
-                     class="flex items-center justify-between p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded">
-                  <span class="text-sm text-gray-700 dark:text-gray-300">{{ issue.description }}</span>
-                  <span class="text-xs px-2 py-1 bg-yellow-200 dark:bg-yellow-800 rounded">{{ issue.severity }}</span>
-                </div>
-              </div>
-            </div>
-          </div>
+        <!-- Sheet Comparison Tab -->
+        <div v-if="activeTab === 'sheets'" class="space-y-6">
+          <SheetComparison :sessionId="route.params.sessionId" />
         </div>
       </div>
     </div>
@@ -450,11 +425,12 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch, nextTick } from 'vue'
+import { ref, onMounted, watch, nextTick, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import axios from 'axios'
 import Plotly from 'plotly.js-dist'
 import { useNotification } from '../utils/notification'
+import SheetComparison from '../components/SheetComparison.vue'
 
 const route = useRoute()
 const { showNotification } = useNotification()
@@ -465,13 +441,20 @@ const activeTab = ref('overview')
 const dataColumns = ref([])
 const dataSample = ref([])
 
+// Sheet info state
+const sheetInfo = ref(null)
+const hasMultipleSheets = computed(() => {
+  return sheetInfo.value && sheetInfo.value.sheets && sheetInfo.value.sheets.length > 1
+})
+
+// Static tabs - Sheet Comparison replaces Patterns & Insights
 const tabs = [
   { id: 'overview', name: 'Overview' },
   { id: 'visualizations', name: 'Visualizations' },
   { id: 'data', name: 'Data Preview' },
   { id: 'filter', name: 'Filter' },
   { id: 'groupby', name: 'Group By' },
-  { id: 'patterns', name: 'Patterns & Insights' }
+  { id: 'sheets', name: 'Sheet Comparison' }
 ]
 
 // Group by state
@@ -518,6 +501,15 @@ const fetchAnalysis = async (sessionId) => {
       numericColumns.value = response.data.column_stats
         .filter(stat => stat.dtype.includes('int') || stat.dtype.includes('float'))
         .map(stat => stat.column)
+    }
+    
+    // Fetch sheet info to check if multiple sheets exist
+    try {
+      const sheetResponse = await axios.get(`/api/sheets/${sessionId}`)
+      sheetInfo.value = sheetResponse.data
+    } catch (error) {
+      console.log('No sheet info available - single sheet file')
+      sheetInfo.value = null
     }
     
     // Create visualizations after data is loaded
