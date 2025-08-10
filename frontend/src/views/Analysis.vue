@@ -151,16 +151,28 @@
 
         <!-- Data Preview Tab -->
         <div v-if="activeTab === 'data'" class="card">
-          <div class="p-6 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
-            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Data Preview</h2>
-            <button @click="exportCurrentData()" 
-                    class="btn-secondary flex items-center space-x-2">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-                      d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              <span>Export Data</span>
-            </button>
+          <div class="p-6 border-b border-gray-200 dark:border-gray-700">
+            <div class="flex justify-between items-center">
+              <div>
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Data Preview</h2>
+                <!-- Show filter indicator if viewing drill-down data -->
+                <p v-if="currentDrillDownFilter" class="text-sm text-primary-600 dark:text-primary-400 mt-1">
+                  Filtered: {{ currentDrillDownFilter.column }} = {{ currentDrillDownFilter.value }} 
+                  ({{ currentDrillDownFilter.rows_matched }} rows)
+                  <button @click="clearDrillDownFilter" class="ml-2 text-xs underline hover:no-underline">
+                    Clear filter
+                  </button>
+                </p>
+              </div>
+              <button @click="exportCurrentData()" 
+                      class="btn-secondary flex items-center space-x-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                        d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <span>{{ currentDrillDownFilter ? 'Export Filtered' : 'Export Data' }}</span>
+              </button>
+            </div>
           </div>
           <div class="overflow-x-auto">
             <table class="w-full">
@@ -469,6 +481,9 @@ const numericColumns = ref([])
 const filteredData = ref(null)
 const showFilterModal = ref(false)
 
+// Track current drill-down filter from group by
+const currentDrillDownFilter = ref(null)
+
 // Filter state
 const filters = ref([])
 const filterResults = ref(null)
@@ -485,6 +500,9 @@ const fetchAnalysis = async (sessionId) => {
   try {
     const response = await axios.get(`/api/analysis/${sessionId}`)
     analysisData.value = response.data
+    
+    // Reset drill-down filter when fetching new analysis
+    currentDrillDownFilter.value = null
     
     // Extract data sample
     if (response.data.sample) {
@@ -709,6 +727,12 @@ const showFilteredData = async (column, value) => {
     if (response.data.sample) {
       // Update data preview with filtered data
       dataSample.value = response.data.sample
+      // Store the current drill-down filter for export
+      currentDrillDownFilter.value = {
+        column: column,
+        value: value,
+        rows_matched: response.data.rows_matched
+      }
       activeTab.value = 'data'
       
       showNotification(`Showing ${response.data.rows_matched} rows where ${column} = ${value}`, 'success')
@@ -720,10 +744,15 @@ const showFilteredData = async (column, value) => {
 }
 
 // Watch for tab changes to create visualizations
-watch(activeTab, async (newTab) => {
+watch(activeTab, async (newTab, oldTab) => {
   if (newTab === 'visualizations' && analysisData.value) {
     await nextTick()
     createVisualizations()
+  }
+  
+  // Clear drill-down filter when leaving data tab (except when coming from group by)
+  if (oldTab === 'data' && newTab !== 'groupby' && currentDrillDownFilter.value) {
+    clearDrillDownFilter()
   }
 })
 
@@ -743,6 +772,14 @@ const removeFilter = (index) => {
 const clearFilters = () => {
   filters.value = []
   filterResults.value = null
+}
+
+const clearDrillDownFilter = () => {
+  currentDrillDownFilter.value = null
+  // Restore original data sample
+  if (analysisData.value && analysisData.value.sample) {
+    dataSample.value = analysisData.value.sample
+  }
 }
 
 const updateFilterType = (index) => {
@@ -820,16 +857,41 @@ const exportCurrentData = async () => {
   if (!sessionId) return
   
   try {
-    // If there's filtered data, export that; otherwise export full data
-    const params = filteredData.value ? { filtered: true } : {}
-    
-    const response = await axios.get(`/api/export/${sessionId}`, {
-      params: { format: 'csv', ...params },
-      responseType: 'blob'
-    })
-    
-    downloadFile(response.data, `data_preview_${sessionId}.csv`)
-    showNotification('Data exported successfully', 'success')
+    // Check if we have a drill-down filter from group by
+    if (currentDrillDownFilter.value) {
+      // Export the filtered data from drill-down
+      // Format the filter properly as an array for the backend
+      const response = await axios.post(`/api/export/${sessionId}/custom`, {
+        type: 'filter',
+        filters: [{
+          column: currentDrillDownFilter.value.column,
+          operator: '=',
+          value: currentDrillDownFilter.value.value
+        }],
+        format: 'csv'
+      })
+      
+      downloadFile(new Blob([response.data]), `filtered_${currentDrillDownFilter.value.column}_${currentDrillDownFilter.value.value}_${sessionId}.csv`)
+      showNotification('Filtered data exported successfully', 'success')
+    } else if (filteredData.value) {
+      // If there's other filtered data, export that
+      const response = await axios.get(`/api/export/${sessionId}`, {
+        params: { format: 'csv', filtered: true },
+        responseType: 'blob'
+      })
+      
+      downloadFile(response.data, `filtered_data_${sessionId}.csv`)
+      showNotification('Filtered data exported successfully', 'success')
+    } else {
+      // Otherwise export full data
+      const response = await axios.get(`/api/export/${sessionId}`, {
+        params: { format: 'csv' },
+        responseType: 'blob'
+      })
+      
+      downloadFile(response.data, `data_preview_${sessionId}.csv`)
+      showNotification('Data exported successfully', 'success')
+    }
   } catch (error) {
     console.error('Export failed:', error)
     showNotification('Failed to export data', 'error')
