@@ -33,6 +33,7 @@ class DataProcessor:
     def __init__(self, file_path: str):
         self.file_path = Path(file_path)
         self.df: Optional[pd.DataFrame] = None
+        self.sheets: Dict[str, pd.DataFrame] = {}  # For Excel files with multiple sheets
         self.file_hash = self._generate_file_hash()
         self._load_data()
     
@@ -55,8 +56,19 @@ class DataProcessor:
                 # Try to infer the separator
                 self.df = pd.read_csv(self.file_path)
             elif file_ext in ['.xlsx', '.xls']:
-                # Use Pandas Excel support
-                self.df = pd.read_excel(self.file_path)
+                # Load all sheets from Excel file
+                excel_file = pd.ExcelFile(self.file_path)
+                sheet_names = excel_file.sheet_names
+                
+                if len(sheet_names) == 1:
+                    # Single sheet - load as main dataframe
+                    self.df = pd.read_excel(self.file_path)
+                else:
+                    # Multiple sheets - load all into sheets dict
+                    for sheet_name in sheet_names:
+                        self.sheets[sheet_name] = pd.read_excel(self.file_path, sheet_name=sheet_name)
+                    # Use first sheet as default dataframe
+                    self.df = self.sheets[sheet_names[0]]
             else:
                 raise ValueError(f"Unsupported file format: {file_ext}")
         except Exception as e:
@@ -328,3 +340,136 @@ class DataProcessor:
             return buffer.getvalue()
         else:
             raise ValueError(f"Unsupported export format: {format}")
+    
+    def get_sheet_names(self) -> List[str]:
+        """Get list of sheet names if this is an Excel file with multiple sheets"""
+        return list(self.sheets.keys())
+    
+    def get_sheet_info(self) -> Dict[str, Any]:
+        """Get information about all sheets"""
+        if not self.sheets:
+            return {"has_multiple_sheets": False}
+        
+        sheet_info = {
+            "has_multiple_sheets": True,
+            "sheet_count": len(self.sheets),
+            "sheets": {}
+        }
+        
+        for sheet_name, df in self.sheets.items():
+            sheet_info["sheets"][sheet_name] = {
+                "rows": df.shape[0],
+                "columns": df.shape[1],
+                "column_names": df.columns.tolist(),
+                "dtypes": {col: str(dtype) for col, dtype in zip(df.columns, df.dtypes)}
+            }
+        
+        return sheet_info
+    
+    def switch_sheet(self, sheet_name: str) -> bool:
+        """Switch the active sheet for analysis"""
+        if sheet_name in self.sheets:
+            self.df = self.sheets[sheet_name]
+            return True
+        return False
+    
+    def compare_sheets(self, sheet1_name: str, sheet2_name: str, 
+                      key_columns: List[str], 
+                      comparison_columns: Optional[List[str]] = None) -> Dict[str, Any]:
+        """Compare two sheets based on key columns"""
+        if sheet1_name not in self.sheets or sheet2_name not in self.sheets:
+            return {"error": "One or both sheets not found"}
+        
+        df1 = self.sheets[sheet1_name]
+        df2 = self.sheets[sheet2_name]
+        
+        # Validate key columns exist in both sheets
+        for col in key_columns:
+            if col not in df1.columns or col not in df2.columns:
+                return {"error": f"Key column '{col}' not found in one or both sheets"}
+        
+        # If no comparison columns specified, use all common columns
+        if comparison_columns is None:
+            comparison_columns = list(set(df1.columns) & set(df2.columns))
+        
+        # Create key column for merging
+        if len(key_columns) == 1:
+            df1_key = df1[key_columns[0]].astype(str)
+            df2_key = df2[key_columns[0]].astype(str)
+        else:
+            df1_key = df1[key_columns].astype(str).apply(lambda x: '_'.join(x), axis=1)
+            df2_key = df2[key_columns].astype(str).apply(lambda x: '_'.join(x), axis=1)
+        
+        df1_with_key = df1.copy()
+        df2_with_key = df2.copy()
+        df1_with_key['_merge_key'] = df1_key
+        df2_with_key['_merge_key'] = df2_key
+        
+        # Perform full outer merge
+        merged = pd.merge(df1_with_key, df2_with_key, 
+                         on='_merge_key', 
+                         how='outer', 
+                         suffixes=('_sheet1', '_sheet2'),
+                         indicator=True)
+        
+        # Find matching, only in sheet1, and only in sheet2
+        matching_rows = merged[merged['_merge'] == 'both'].copy()
+        only_sheet1 = merged[merged['_merge'] == 'left_only'].copy()
+        only_sheet2 = merged[merged['_merge'] == 'right_only'].copy()
+        
+        # Clean up merge artifacts
+        matching_rows = matching_rows.drop(['_merge', '_merge_key'], axis=1)
+        only_sheet1 = only_sheet1.drop(['_merge', '_merge_key'], axis=1)
+        only_sheet2 = only_sheet2.drop(['_merge', '_merge_key'], axis=1)
+        
+        # For rows only in sheet1, keep only sheet1 columns
+        sheet1_cols = [col for col in only_sheet1.columns if not col.endswith('_sheet2')]
+        only_sheet1 = only_sheet1[sheet1_cols]
+        only_sheet1.columns = [col.replace('_sheet1', '') if col.endswith('_sheet1') else col for col in only_sheet1.columns]
+        
+        # For rows only in sheet2, keep only sheet2 columns  
+        sheet2_cols = [col for col in only_sheet2.columns if not col.endswith('_sheet1')]
+        only_sheet2 = only_sheet2[sheet2_cols]
+        only_sheet2.columns = [col.replace('_sheet2', '') if col.endswith('_sheet2') else col for col in only_sheet2.columns]
+        
+        # Find differences in matching rows
+        differences = []
+        if len(matching_rows) > 0:
+            for col in comparison_columns:
+                if col in df1.columns and col in df2.columns and col not in key_columns:
+                    col1 = f"{col}_sheet1"
+                    col2 = f"{col}_sheet2"
+                    if col1 in matching_rows.columns and col2 in matching_rows.columns:
+                        # Find rows where values differ
+                        diff_mask = matching_rows[col1] != matching_rows[col2]
+                        if diff_mask.any():
+                            diff_rows = matching_rows[diff_mask]
+                            for _, row in diff_rows.iterrows():
+                                diff_record = {}
+                                for k_col in key_columns:
+                                    if f"{k_col}_sheet1" in row:
+                                        diff_record[k_col] = row[f"{k_col}_sheet1"]
+                                    elif k_col in row:
+                                        diff_record[k_col] = row[k_col]
+                                diff_record['column'] = col
+                                diff_record['sheet1_value'] = row[col1]
+                                diff_record['sheet2_value'] = row[col2]
+                                differences.append(convert_numpy_types(diff_record))
+        
+        return {
+            "summary": {
+                "sheet1_name": sheet1_name,
+                "sheet2_name": sheet2_name,
+                "sheet1_rows": len(df1),
+                "sheet2_rows": len(df2),
+                "matching_rows": len(matching_rows),
+                "only_in_sheet1": len(only_sheet1),
+                "only_in_sheet2": len(only_sheet2),
+                "key_columns": key_columns,
+                "comparison_columns": comparison_columns
+            },
+            "matching_rows": convert_numpy_types(matching_rows.head(100).to_dict('records')),
+            "only_in_sheet1": convert_numpy_types(only_sheet1.head(100).to_dict('records')),
+            "only_in_sheet2": convert_numpy_types(only_sheet2.head(100).to_dict('records')),
+            "differences": differences[:100]  # Limit to first 100 differences
+        }

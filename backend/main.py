@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
-from api.routers import upload, analysis, sessions, export
+from api.routers import upload, analysis, sessions, export, sheets
 
 # Create FastAPI app
 app = FastAPI(
@@ -32,6 +32,7 @@ app.include_router(upload.router, prefix="/api/upload", tags=["upload"])
 app.include_router(analysis.router, prefix="/api/analysis", tags=["analysis"])
 app.include_router(sessions.router, prefix="/api/sessions", tags=["sessions"])
 app.include_router(export.router, prefix="/api/export", tags=["export"])
+app.include_router(sheets.router, prefix="/api/sheets", tags=["sheets"])
 
 # Add startup event
 @app.on_event("startup")
