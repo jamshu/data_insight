@@ -106,3 +106,37 @@ async def get_common_columns(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/{session_id}/compare/export/")
+async def export_comparison(
+    request: SheetComparisonRequest,
+    export_type: str = "all",  # "all", "matching", "only1", "only2"
+    processor: DataProcessor = Depends(get_session_processor)
+):
+    """Export full sheet comparison results without limits"""
+    try:
+        # Validate that this is an Excel file with multiple sheets
+        if not processor.sheets:
+            raise HTTPException(
+                status_code=400, 
+                detail="No multiple sheets available. This feature is only for Excel files with multiple sheets."
+            )
+        
+        # Perform full comparison (without limits)
+        result = processor.compare_sheets_full(
+            sheet1_name=request.sheet1,
+            sheet2_name=request.sheet2,
+            key_columns=request.key_columns,
+            comparison_columns=request.comparison_columns,
+            export_type=export_type
+        )
+        
+        # Check for errors in comparison
+        if "error" in result:
+            raise HTTPException(status_code=400, detail=result["error"])
+        
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

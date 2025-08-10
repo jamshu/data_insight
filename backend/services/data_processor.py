@@ -473,3 +473,77 @@ class DataProcessor:
             "only_in_sheet2": convert_numpy_types(only_sheet2.head(100).to_dict('records')),
             "differences": differences[:100]  # Limit to first 100 differences
         }
+    
+    def compare_sheets_full(self, sheet1_name: str, sheet2_name: str, 
+                           key_columns: List[str], 
+                           comparison_columns: Optional[List[str]] = None,
+                           export_type: str = "all") -> Dict[str, Any]:
+        """Compare two sheets and return full data for export (no limits)"""
+        if sheet1_name not in self.sheets or sheet2_name not in self.sheets:
+            return {"error": "One or both sheets not found"}
+        
+        df1 = self.sheets[sheet1_name]
+        df2 = self.sheets[sheet2_name]
+        
+        # Validate key columns exist in both sheets
+        for col in key_columns:
+            if col not in df1.columns or col not in df2.columns:
+                return {"error": f"Key column '{col}' not found in one or both sheets"}
+        
+        # If no comparison columns specified, use all common columns
+        if comparison_columns is None:
+            comparison_columns = list(set(df1.columns) & set(df2.columns))
+        
+        # Create key column for merging
+        if len(key_columns) == 1:
+            df1_key = df1[key_columns[0]].astype(str)
+            df2_key = df2[key_columns[0]].astype(str)
+        else:
+            df1_key = df1[key_columns].astype(str).apply(lambda x: '_'.join(x), axis=1)
+            df2_key = df2[key_columns].astype(str).apply(lambda x: '_'.join(x), axis=1)
+        
+        df1_with_key = df1.copy()
+        df2_with_key = df2.copy()
+        df1_with_key['_merge_key'] = df1_key
+        df2_with_key['_merge_key'] = df2_key
+        
+        # Perform full outer merge
+        merged = pd.merge(df1_with_key, df2_with_key, 
+                         on='_merge_key', 
+                         how='outer', 
+                         suffixes=('_sheet1', '_sheet2'),
+                         indicator=True)
+        
+        # Find matching, only in sheet1, and only in sheet2
+        matching_rows = merged[merged['_merge'] == 'both'].copy()
+        only_sheet1 = merged[merged['_merge'] == 'left_only'].copy()
+        only_sheet2 = merged[merged['_merge'] == 'right_only'].copy()
+        
+        # Clean up merge artifacts
+        matching_rows = matching_rows.drop(['_merge', '_merge_key'], axis=1)
+        only_sheet1 = only_sheet1.drop(['_merge', '_merge_key'], axis=1)
+        only_sheet2 = only_sheet2.drop(['_merge', '_merge_key'], axis=1)
+        
+        # For rows only in sheet1, keep only sheet1 columns
+        sheet1_cols = [col for col in only_sheet1.columns if not col.endswith('_sheet2')]
+        only_sheet1 = only_sheet1[sheet1_cols]
+        only_sheet1.columns = [col.replace('_sheet1', '') if col.endswith('_sheet1') else col for col in only_sheet1.columns]
+        
+        # For rows only in sheet2, keep only sheet2 columns  
+        sheet2_cols = [col for col in only_sheet2.columns if not col.endswith('_sheet1')]
+        only_sheet2 = only_sheet2[sheet2_cols]
+        only_sheet2.columns = [col.replace('_sheet2', '') if col.endswith('_sheet2') else col for col in only_sheet2.columns]
+        
+        # Return the requested data type without limits
+        if export_type == "matching":
+            return convert_numpy_types(matching_rows.to_dict('records'))
+        elif export_type == "only1":
+            return convert_numpy_types(only_sheet1.to_dict('records'))
+        elif export_type == "only2":
+            return convert_numpy_types(only_sheet2.to_dict('records'))
+        else:  # "all"
+            return {
+                "matching_rows": convert_numpy_types(matching_rows.to_dict('records')),
+                "only_in_sheet1": convert_numpy_types(only_sheet1.to_dict('records')),
+                "only_in_sheet2": convert_numpy_types(only_sheet2.to_dict('records'))
+            }

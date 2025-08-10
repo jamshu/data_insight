@@ -435,56 +435,107 @@ export default {
       return String(value)
     },
     
-    exportComparison(type) {
-      let data = []
-      let filename = ''
+    async exportComparison(type) {
+      // Show loading indicator
+      const originalText = event.target.textContent
+      event.target.textContent = 'Exporting...'
+      event.target.disabled = true
       
-      switch(type) {
-        case 'matching':
-          data = this.comparisonResult.matching_rows
-          filename = `matching_rows_${this.selectedSheet1}_${this.selectedSheet2}.csv`
-          break
-        case 'only1':
-          data = this.comparisonResult.only_in_sheet1
-          filename = `only_in_${this.selectedSheet1}.csv`
-          break
-        case 'only2':
-          data = this.comparisonResult.only_in_sheet2
-          filename = `only_in_${this.selectedSheet2}.csv`
-          break
-      }
-      
-      if (data.length === 0) {
-        alert('No data to export')
-        return
-      }
-      
-      // Convert to CSV
-      const headers = Object.keys(data[0])
-      const csvContent = [
-        headers.join(','),
-        ...data.map(row => 
-          headers.map(header => {
-            const value = row[header]
-            if (value === null || value === undefined) return ''
-            const str = String(value)
-            // Escape quotes and wrap in quotes if contains comma or quotes
-            if (str.includes(',') || str.includes('"') || str.includes('\n')) {
-              return `"${str.replace(/"/g, '""')}"`
-            }
-            return str
-          }).join(',')
+      try {
+        // Fetch full data from the export endpoint
+        const response = await fetch(
+          `/api/sheets/${this.sessionId}/compare/export/?export_type=${type}`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              sheet1: this.selectedSheet1,
+              sheet2: this.selectedSheet2,
+              key_columns: this.selectedKeyColumns,
+              comparison_columns: this.selectedComparisonColumns.length > 0 
+                ? this.selectedComparisonColumns 
+                : null
+            })
+          }
         )
-      ].join('\n')
-      
-      // Download
-      const blob = new Blob([csvContent], { type: 'text/csv' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = filename
-      a.click()
-      URL.revokeObjectURL(url)
+        
+        if (!response.ok) {
+          const error = await response.json()
+          throw new Error(error.detail || 'Export failed')
+        }
+        
+        const data = await response.json()
+        
+        // Handle error response
+        if (data.error) {
+          throw new Error(data.error)
+        }
+        
+        // Determine the data array and filename based on type
+        let exportData = []
+        let filename = ''
+        
+        switch(type) {
+          case 'matching':
+            exportData = data.matching_rows || data
+            filename = `matching_rows_${this.selectedSheet1}_${this.selectedSheet2}.csv`
+            break
+          case 'only1':
+            exportData = data.only_in_sheet1 || data
+            filename = `only_in_${this.selectedSheet1}.csv`
+            break
+          case 'only2':
+            exportData = data.only_in_sheet2 || data
+            filename = `only_in_${this.selectedSheet2}.csv`
+            break
+        }
+        
+        // Check if we have data to export
+        if (!Array.isArray(exportData) || exportData.length === 0) {
+          alert('No data to export')
+          return
+        }
+        
+        // Convert to CSV
+        const headers = Object.keys(exportData[0])
+        const csvContent = [
+          headers.join(','),
+          ...exportData.map(row => 
+            headers.map(header => {
+              const value = row[header]
+              if (value === null || value === undefined) return ''
+              const str = String(value)
+              // Escape quotes and wrap in quotes if contains comma or quotes
+              if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+                return `"${str.replace(/"/g, '""')}"`
+              }
+              return str
+            }).join(',')
+          )
+        ].join('\n')
+        
+        // Download
+        const blob = new Blob([csvContent], { type: 'text/csv' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = filename
+        a.click()
+        URL.revokeObjectURL(url)
+        
+        // Show success message
+        alert(`Successfully exported ${exportData.length} rows`)
+        
+      } catch (error) {
+        console.error('Export failed:', error)
+        alert('Export failed: ' + error.message)
+      } finally {
+        // Restore button state
+        event.target.textContent = originalText
+        event.target.disabled = false
+      }
     }
   }
 }
