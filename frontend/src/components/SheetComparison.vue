@@ -269,22 +269,22 @@
         <!-- Export Options -->
         <div class="mt-6 flex space-x-2">
           <button 
-            @click="exportComparison('matching')"
+            @click="exportComparison('matching', $event)"
             class="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700"
           >
-            Export Matching Rows
+            {{ exportingType === 'matching' ? 'Exporting...' : 'Export Matching Rows' }}
           </button>
           <button 
-            @click="exportComparison('only1')"
+            @click="exportComparison('only1', $event)"
             class="px-3 py-1 bg-orange-600 text-white rounded hover:bg-orange-700"
           >
-            Export Only in {{ comparisonResult.summary.sheet1_name }}
+            {{ exportingType === 'only1' ? 'Exporting...' : `Export Only in ${comparisonResult.summary.sheet1_name}` }}
           </button>
           <button 
-            @click="exportComparison('only2')"
+            @click="exportComparison('only2', $event)"
             class="px-3 py-1 bg-orange-600 text-white rounded hover:bg-orange-700"
           >
-            Export Only in {{ comparisonResult.summary.sheet2_name }}
+            {{ exportingType === 'only2' ? 'Exporting...' : `Export Only in ${comparisonResult.summary.sheet2_name}` }}
           </button>
         </div>
       </div>
@@ -312,7 +312,8 @@ export default {
       selectedComparisonColumns: [],
       comparisonResult: null,
       loading: false,
-      activeTab: 'matching'
+      activeTab: 'matching',
+      exportingType: null  // Track which export is in progress
     }
   },
   
@@ -435,11 +436,9 @@ export default {
       return String(value)
     },
     
-    async exportComparison(type) {
-      // Show loading indicator
-      const originalText = event.target.textContent
-      event.target.textContent = 'Exporting...'
-      event.target.disabled = true
+    async exportComparison(type, event) {
+      // Don't disable button, just track exporting state
+      this.exportingType = type
       
       try {
         // Fetch full data from the export endpoint
@@ -525,16 +524,15 @@ export default {
         a.click()
         URL.revokeObjectURL(url)
         
-        // Show success message
-        alert(`Successfully exported ${exportData.length} rows`)
+        // Show success message (optional - can be removed if not needed)
+        // alert(`Successfully exported ${exportData.length} rows`)
         
       } catch (error) {
         console.error('Export failed:', error)
         alert('Export failed: ' + error.message)
       } finally {
-        // Restore button state
-        event.target.textContent = originalText
-        event.target.disabled = false
+        // Reset exporting state
+        this.exportingType = null
       }
     }
   }
