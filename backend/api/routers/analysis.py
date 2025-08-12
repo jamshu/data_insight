@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Path
 from typing import Dict, Any, Optional
 import uuid
 import traceback
+import pandas as pd
 from api.routers.upload import sessions
 
 router = APIRouter()
@@ -140,10 +141,12 @@ async def custom_analysis(
                             continue
                 
                 # Always return a valid response, even if no matches
+                from services.data_processor import convert_numpy_types
+                sample_data = filtered.head(100).to_dict('records') if len(filtered) > 0 else []
                 return {
                     "rows_matched": len(filtered),
                     "percentage": (len(filtered) / len(df)) * 100 if len(df) > 0 else 0,
-                    "sample": filtered.head(100).to_dict('records') if len(filtered) > 0 else []
+                    "sample": convert_numpy_types(sample_data)
                 }
             else:
                 # No filters provided, return empty result
@@ -174,6 +177,9 @@ async def custom_analysis(
                     result = df.groupby(group_column)[agg_column].min().reset_index()
                 else:
                     result = df.groupby(group_column)[agg_column].mean().reset_index()
+                
+                # Replace NaN values with None before converting
+                result = result.where(pd.notnull(result), None)
                 
                 # Convert numpy types before returning
                 from services.data_processor import convert_numpy_types

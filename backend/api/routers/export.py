@@ -195,6 +195,9 @@ async def export_custom_data(
                     df = df.groupby(group_column)[agg_column].max().reset_index()
                 elif agg_func == "min" and agg_column:
                     df = df.groupby(group_column)[agg_column].min().reset_index()
+                
+                # Replace NaN values with None before exporting
+                df = df.where(pd.notnull(df), None)
         
         # Export in requested format
         if format_type.lower() == "csv":
