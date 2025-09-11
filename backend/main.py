@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
-from api.routers import upload, analysis, sessions, export, sheets
+from api.routers import upload, analysis, sessions, export, sheets, stock_movement
 
 # Create FastAPI app
 app = FastAPI(
@@ -27,12 +27,16 @@ os.makedirs("uploads", exist_ok=True)
 if os.path.exists("static"):
     app.mount("/static", StaticFiles(directory="static"), name="static")
 
+# Mount uploads directory for file downloads
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+
 # Include routers with correct prefixes
 app.include_router(upload.router, prefix="/api/upload", tags=["upload"])
 app.include_router(analysis.router, prefix="/api/analysis", tags=["analysis"])
 app.include_router(sessions.router, prefix="/api/sessions", tags=["sessions"])
 app.include_router(export.router, prefix="/api/export", tags=["export"])
 app.include_router(sheets.router, prefix="/api/sheets", tags=["sheets"])
+app.include_router(stock_movement.router, prefix="/api/stock-movement", tags=["stock_movement"])
 
 # Add startup event
 @app.on_event("startup")
