@@ -34,6 +34,11 @@
               <p class="text-sm text-green-600 dark:text-green-400 mt-1">
                 Columns: {{ validationResult.shape[1] }}, Rows: {{ validationResult.shape[0] }}
               </p>
+              <div v-if="validationResult.format_name" class="mt-2 text-xs text-green-600 dark:text-green-400">
+                <span class="inline-flex items-center px-2 py-1 rounded-full bg-green-100 dark:bg-green-800">
+                  📊 {{ validationResult.format_name }}
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -46,11 +51,19 @@
             <div>
               <h4 class="font-medium text-red-800 dark:text-red-200">Invalid Stock Movement File</h4>
               <p class="text-sm text-red-600 dark:text-red-400 mt-1">{{ validationResult.message }}</p>
-              <div v-if="validationResult.missing_columns" class="mt-2">
-                <p class="text-sm text-red-600 dark:text-red-400">Missing columns:</p>
-                <ul class="list-disc list-inside text-xs text-red-500 dark:text-red-400 mt-1">
-                  <li v-for="col in validationResult.missing_columns" :key="col">{{ col }}</li>
-                </ul>
+              <div v-if="validationResult.format1_missing_columns || validationResult.format2_missing_columns" class="mt-2 space-y-2">
+                <div v-if="validationResult.format1_missing_columns" class="text-xs">
+                  <p class="text-red-600 dark:text-red-400 font-medium">Product Moves Format - Missing columns:</p>
+                  <ul class="list-disc list-inside text-red-500 dark:text-red-400 ml-2">
+                    <li v-for="col in validationResult.format1_missing_columns" :key="col">{{ col }}</li>
+                  </ul>
+                </div>
+                <div v-if="validationResult.format2_missing_columns" class="text-xs">
+                  <p class="text-red-600 dark:text-red-400 font-medium">StockMove Format - Missing columns:</p>
+                  <ul class="list-disc list-inside text-red-500 dark:text-red-400 ml-2">
+                    <li v-for="col in validationResult.format2_missing_columns" :key="col">{{ col }}</li>
+                  </ul>
+                </div>
               </div>
             </div>
           </div>
@@ -391,21 +404,14 @@ const validateFile = async () => {
       isValidated.value = true
       availableColumns.value = response.data.columns
       
-      // Auto-populate fields based on standard column names
-      if (response.data.columns.includes('Unit of Measure')) {
-        config.value.uom_column = 'Unit of Measure'
-      }
-      if (response.data.columns.includes('From')) {
-        config.value.location_from_column = 'From'
-      }
-      if (response.data.columns.includes('To')) {
-        config.value.location_to_column = 'To'
-      }
-      if (response.data.columns.includes('Done')) {
-        config.value.quantity_column = 'Done'
-      }
-      if (response.data.columns.includes('Date')) {
-        config.value.date_column = 'Date'
+      // Auto-populate fields based on detected format
+      if (response.data.column_mapping) {
+        const mapping = response.data.column_mapping
+        config.value.uom_column = mapping.uom_column
+        config.value.location_from_column = mapping.location_from_column
+        config.value.location_to_column = mapping.location_to_column
+        config.value.quantity_column = mapping.quantity_column
+        config.value.date_column = mapping.date_column
       }
       
       showNotification('File validation successful!', 'success')

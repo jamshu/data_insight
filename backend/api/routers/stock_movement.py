@@ -45,22 +45,56 @@ def get_session_file(session_id: str) -> str:
     raise HTTPException(status_code=404, detail="Session file not found")
 
 
-def validate_stock_movement_file(df: pd.DataFrame) -> bool:
-    """Validate if the file is a valid stock movement report"""
-    # Required columns for stock movement report
-    required_columns = {
+def validate_stock_movement_file(df: pd.DataFrame) -> Dict[str, Any]:
+    """Validate if the file is a valid stock movement report and determine format"""
+    existing_columns = set(df.columns)
+    
+    # Format 1: Original format (Product Moves)
+    format1_required = {
         'Date', 'Reference', 'Product', 'From', 'To', 'Done', 'Unit of Measure', 'Status'
     }
     
-    # Check if all required columns are present
-    existing_columns = set(df.columns)
-    missing_columns = required_columns - existing_columns
+    # Format 2: New format (StockMove)
+    format2_required = {
+        'Date Scheduled', 'Reference', 'Product', 'Source Location', 'Destination Location', 'Demand', 'UoM', 'Status'
+    }
     
-    if missing_columns:
-        return False
+    format1_missing = format1_required - existing_columns
+    format2_missing = format2_required - existing_columns
     
-    # Additional validation can be added here if needed
-    return True
+    if len(format1_missing) == 0:
+        return {
+            'is_valid': True,
+            'format': 'format1',
+            'format_name': 'Product Moves Format',
+            'column_mapping': {
+                'date_column': 'Date',
+                'location_from_column': 'From',
+                'location_to_column': 'To',
+                'quantity_column': 'Done',
+                'uom_column': 'Unit of Measure'
+            }
+        }
+    elif len(format2_missing) == 0:
+        return {
+            'is_valid': True,
+            'format': 'format2',
+            'format_name': 'StockMove Format',
+            'column_mapping': {
+                'date_column': 'Date Scheduled',
+                'location_from_column': 'Source Location',
+                'location_to_column': 'Destination Location',
+                'quantity_column': 'Demand',
+                'uom_column': 'UoM'
+            }
+        }
+    else:
+        return {
+            'is_valid': False,
+            'format': None,
+            'format1_missing': list(format1_missing),
+            'format2_missing': list(format2_missing)
+        }
 
 @router.post("/process", response_model=StockMovementResult)
 async def process_stock_movement(config: StockMovementConfig):
@@ -78,10 +112,16 @@ async def process_stock_movement(config: StockMovementConfig):
             df = pd.read_excel(file_path)
         
         # Validate if this is a stock movement file
-        if not validate_stock_movement_file(df):
+        validation_result = validate_stock_movement_file(df)
+        if not validation_result['is_valid']:
+            missing_info = []
+            if 'format1_missing' in validation_result:
+                missing_info.append(f"Format 1 missing: {', '.join(validation_result['format1_missing'])}")
+            if 'format2_missing' in validation_result:
+                missing_info.append(f"Format 2 missing: {', '.join(validation_result['format2_missing'])}")
             return StockMovementResult(
                 success=False,
-                message="The uploaded file does not appear to be a valid stock movement report. Please check the file format."
+                message=f"The uploaded file does not match any supported stock movement format. {' | '.join(missing_info)}"
             )
         
         # Create UOM mapping dictionary
@@ -178,24 +218,28 @@ async def validate_stock_movement_file_endpoint(session_id: str):
         else:
             df = pd.read_excel(file_path)
         
-        is_valid = validate_stock_movement_file(df)
+        validation_result = validate_stock_movement_file(df)
         
         result = {
             "success": True,
-            "is_valid_stock_movement": is_valid,
+            "is_valid_stock_movement": validation_result['is_valid'],
             "columns": list(df.columns),
             "shape": df.shape
         }
         
-        if is_valid:
-            result["message"] = "File is a valid stock movement report"
+        if validation_result['is_valid']:
+            result["message"] = f"File is a valid stock movement report ({validation_result['format_name']})"
+            result["format"] = validation_result['format']
+            result["format_name"] = validation_result['format_name']
+            result["column_mapping"] = validation_result['column_mapping']
             # Add sample data to help with column identification
             result["sample_data"] = df.head(3).to_dict('records')
         else:
-            result["message"] = "File does not appear to be a valid stock movement report"
-            required_columns = {'Date', 'Reference', 'Product', 'From', 'To', 'Done', 'Unit of Measure', 'Status'}
-            missing_columns = required_columns - set(df.columns)
-            result["missing_columns"] = list(missing_columns)
+            result["message"] = "File does not match any supported stock movement format"
+            if 'format1_missing' in validation_result:
+                result["format1_missing_columns"] = validation_result['format1_missing']
+            if 'format2_missing' in validation_result:
+                result["format2_missing_columns"] = validation_result['format2_missing']
         
         return result
     except Exception as e:
