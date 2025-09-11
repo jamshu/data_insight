@@ -1,9 +1,11 @@
 from fastapi import APIRouter, HTTPException, Depends
+from fastapi.responses import StreamingResponse
 from typing import Dict, List, Optional, Any, Set
 from pydantic import BaseModel
 import pandas as pd
 import numpy as np
 import os
+import io
 from datetime import datetime
 
 router = APIRouter()
@@ -224,7 +226,7 @@ async def get_available_columns(session_id: str):
 @router.post("/export/{session_id}")
 async def export_processed_data(session_id: str, config: StockMovementConfig):
     """
-    Export processed stock movement data with new columns
+    Export processed stock movement data with new columns as Excel file
     """
     try:
         # Process the data first
@@ -236,19 +238,16 @@ async def export_processed_data(session_id: str, config: StockMovementConfig):
         # Convert to DataFrame
         df = pd.DataFrame(result.processed_data)
         
-        # Generate export filename
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        export_filename = f"stock_movement_{session_id}_{timestamp}.xlsx"
-        export_path = f"uploads/{export_filename}"
+        # Create Excel file in memory
+        excel_buffer = io.BytesIO()
         
-        # Save to Excel with formatting
-        with pd.ExcelWriter(export_path, engine='openpyxl') as writer:
+        with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
             df.to_excel(writer, sheet_name='Stock Movement', index=False)
             
             # Get the worksheet
             worksheet = writer.sheets['Stock Movement']
             
-            # Auto-adjust column widths
+            # Auto-adjust column widths and apply formatting
             from openpyxl.styles import Font, PatternFill, Alignment
             from openpyxl.utils import get_column_letter
             
@@ -274,11 +273,18 @@ async def export_processed_data(session_id: str, config: StockMovementConfig):
                     for row in range(2, len(df) + 2):
                         worksheet[f'{col_letter}{row}'].number_format = '#,##0.00'
         
-        return {
-            "success": True,
-            "message": "Data exported successfully",
-            "filename": export_filename,
-            "path": export_path
-        }
+        excel_buffer.seek(0)
+        
+        # Generate filename
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"stock_movement_{session_id}_{timestamp}.xlsx"
+        
+        # Return the file as a streaming response
+        return StreamingResponse(
+            io.BytesIO(excel_buffer.read()),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+        
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

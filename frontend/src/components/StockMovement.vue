@@ -485,13 +485,36 @@ const exportData = async () => {
     const response = await axios.post(`/api/stock-movement/export/${props.sessionId}`, {
       session_id: props.sessionId,
       ...config.value
+    }, {
+      responseType: 'blob'  // Important for downloading files
     })
     
-    if (response.data.success) {
-      // Download the file
-      window.open(`/uploads/${response.data.filename}`, '_blank')
-      showNotification('Data exported successfully', 'success')
+    // Create a blob URL and trigger download
+    const blob = new Blob([response.data], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    })
+    
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    
+    // Extract filename from Content-Disposition header if available
+    const contentDisposition = response.headers['content-disposition']
+    let filename = 'stock_movement_export.xlsx'
+    if (contentDisposition) {
+      const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/)
+      if (filenameMatch) {
+        filename = filenameMatch[1]
+      }
     }
+    
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    
+    showNotification('Data exported successfully', 'success')
   } catch (error) {
     console.error('Failed to export data:', error)
     showNotification('Failed to export data', 'error')
