@@ -421,6 +421,11 @@
         <div v-if="activeTab === 'sheets'" class="space-y-6">
           <SheetComparison :sessionId="route.params.sessionId" />
         </div>
+        
+        <!-- Stock Movement Tab -->
+        <div v-if="activeTab === 'stock'" class="space-y-6">
+          <StockMovement :sessionId="route.params.sessionId" />
+        </div>
       </div>
     </div>
 
@@ -443,6 +448,7 @@ import axios from 'axios'
 import Plotly from 'plotly.js-dist'
 import { useNotification } from '../utils/notification'
 import SheetComparison from '../components/SheetComparison.vue'
+import StockMovement from '../components/StockMovement.vue'
 
 const route = useRoute()
 const { showNotification } = useNotification()
@@ -466,7 +472,8 @@ const tabs = [
   { id: 'data', name: 'Data Preview' },
   { id: 'filter', name: 'Filter' },
   { id: 'groupby', name: 'Group By' },
-  { id: 'sheets', name: 'Sheet Comparison' }
+  { id: 'sheets', name: 'Sheet Comparison' },
+  { id: 'stock', name: 'Stock Movement' }
 ]
 
 // Group by state
