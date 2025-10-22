@@ -9,3 +9,7 @@ plotly
 python-dotenv
 pydantic-settings
 pyarrow
+PyPDF2
+pdfplumber
+tabula-py
+camelot-py[cv]

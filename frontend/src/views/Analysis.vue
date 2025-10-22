@@ -22,6 +22,12 @@
           </p>
         </div>
         <div class="flex space-x-3">
+          <button v-if="isPdfFile" @click="convertPdfToExcel" class="btn-secondary flex items-center space-x-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <span>Convert to Excel</span>
+          </button>
           <button @click="exportData('csv')" class="btn-secondary flex items-center space-x-2">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -491,6 +497,12 @@ const showFilterModal = ref(false)
 // Track current drill-down filter from group by
 const currentDrillDownFilter = ref(null)
 
+// PDF conversion functionality
+const isPdfFile = computed(() => {
+  return analysisData.value && analysisData.value.basic_info && analysisData.value.basic_info.is_empty === false && 
+         analysisData.value.filename && analysisData.value.filename.toLowerCase().endsWith('.pdf')
+})
+
 // Filter state
 const filters = ref([])
 const filterResults = ref(null)
@@ -641,6 +653,37 @@ const exportData = async (format) => {
   } catch (error) {
     console.error('Export failed:', error)
     showNotification('Failed to export data', 'error')
+  }
+}
+
+const convertPdfToExcel = async () => {
+  const sessionId = route.params.sessionId
+  if (!sessionId) return
+  
+  try {
+    showNotification('Converting PDF to Excel...', 'info')
+    
+    const response = await axios.post(`/api/upload/pdf-to-excel/${sessionId}`)
+    
+    // Download the generated Excel file
+    if (response.data.excel_file) {
+      const excelResponse = await axios.get(`/uploads/${response.data.excel_file.split('/').pop()}`, {
+        responseType: 'blob'
+      })
+      
+      const url = window.URL.createObjectURL(new Blob([excelResponse.data]))
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', `converted_${analysisData.value.filename.replace('.pdf', '.xlsx')}`)
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+    }
+    
+    showNotification('PDF converted to Excel successfully!', 'success')
+  } catch (error) {
+    console.error('PDF conversion failed:', error)
+    showNotification('Failed to convert PDF to Excel', 'error')
   }
 }
 

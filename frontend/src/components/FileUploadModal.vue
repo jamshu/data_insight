@@ -22,7 +22,7 @@
             </h3>
             <div class="mt-2">
               <p class="text-sm text-gray-500 dark:text-gray-400">
-                Upload CSV or Excel files to analyze. Maximum file size: 100MB
+                Upload CSV, Excel, or PDF files to analyze. Maximum file size: 100MB
               </p>
             </div>
 
@@ -41,7 +41,7 @@
               <input
                 ref="fileInput"
                 type="file"
-                accept=".csv,.xlsx,.xls"
+                accept=".csv,.xlsx,.xls,.pdf"
                 @change="handleFileSelect"
                 class="hidden"
                 :disabled="uploadProgress > 0"
@@ -58,7 +58,7 @@
                   </button>
                   or drag and drop
                 </p>
-                <p class="text-xs text-gray-500 dark:text-gray-400">CSV, XLSX up to 100MB</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400">CSV, XLSX, PDF up to 100MB</p>
               </div>
 
               <!-- Upload progress -->
@@ -154,9 +154,9 @@ const selectFile = (file) => {
   errorMessage.value = ''
   
   // Validate file type
-  const validTypes = ['text/csv', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']
-  if (!validTypes.includes(file.type) && !file.name.match(/\.(csv|xlsx|xls)$/i)) {
-    errorMessage.value = 'Please select a CSV or Excel file'
+  const validTypes = ['text/csv', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/pdf']
+  if (!validTypes.includes(file.type) && !file.name.match(/\.(csv|xlsx|xls|pdf)$/i)) {
+    errorMessage.value = 'Please select a CSV, Excel, or PDF file'
     return
   }
   

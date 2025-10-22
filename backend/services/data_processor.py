@@ -60,7 +60,10 @@ class DataProcessor:
                 excel_file = pd.ExcelFile(self.file_path)
                 sheet_names = excel_file.sheet_names
                 
-                if len(sheet_names) == 1:
+                if len(sheet_names) == 0:
+                    # Empty Excel file - create empty dataframe
+                    self.df = pd.DataFrame()
+                elif len(sheet_names) == 1:
                     # Single sheet - load as main dataframe
                     self.df = pd.read_excel(self.file_path)
                 else:
@@ -79,18 +82,31 @@ class DataProcessor:
         if self.df is None:
             return {}
         
+        # Handle empty dataframe
+        if self.df.empty:
+            return {
+                "rows": 0,
+                "columns": 0,
+                "column_names": [],
+                "dtypes": {},
+                "memory_usage": "0.00 MB",
+                "file_hash": self.file_hash,
+                "is_empty": True
+            }
+        
         return {
             "rows": self.df.shape[0],
             "columns": self.df.shape[1],
             "column_names": self.df.columns.tolist(),
             "dtypes": {col: str(dtype) for col, dtype in zip(self.df.columns, self.df.dtypes)},
             "memory_usage": f"{self.df.memory_usage(deep=True).sum() / 1024 / 1024:.2f} MB",
-            "file_hash": self.file_hash
+            "file_hash": self.file_hash,
+            "is_empty": False
         }
     
     def get_column_stats(self) -> Dict[str, Any]:
         """Get detailed statistics for each column"""
-        if self.df is None:
+        if self.df is None or self.df.empty:
             return {}
         
         stats = {}
@@ -153,7 +169,7 @@ class DataProcessor:
     
     def get_correlations(self) -> Dict[str, Any]:
         """Get correlation matrix for numeric columns"""
-        if self.df is None:
+        if self.df is None or self.df.empty:
             return {}
         
         # Select only numeric columns
@@ -181,7 +197,7 @@ class DataProcessor:
     
     def get_data_sample(self, n: int = 100) -> List[Dict]:
         """Get a sample of the data"""
-        if self.df is None:
+        if self.df is None or self.df.empty:
             return []
         
         sample = self.df.head(n)
@@ -191,7 +207,7 @@ class DataProcessor:
     
     def get_value_distribution(self, column: str, bins: int = 20) -> Dict[str, Any]:
         """Get distribution of values for a column"""
-        if self.df is None or column not in self.df.columns:
+        if self.df is None or self.df.empty or column not in self.df.columns:
             return {}
         
         col_data = self.df[column]
@@ -261,7 +277,7 @@ class DataProcessor:
     
     def detect_patterns(self) -> Dict[str, Any]:
         """Detect patterns and anomalies in the data"""
-        if self.df is None:
+        if self.df is None or self.df.empty:
             return {}
         
         patterns = {
@@ -319,6 +335,8 @@ class DataProcessor:
     
     def get_value_distributions(self) -> Dict[str, Any]:
         """Get distributions for all columns"""
+        if self.df is None or self.df.empty:
+            return {}
         distributions = {}
         for col in self.df.columns:
             distributions[col] = self.get_value_distribution(col)
@@ -326,7 +344,7 @@ class DataProcessor:
     
     def export_processed_data(self, format: str = "csv") -> bytes:
         """Export processed data in various formats"""
-        if self.df is None:
+        if self.df is None or self.df.empty:
             return b""
         
         if format == "csv":
